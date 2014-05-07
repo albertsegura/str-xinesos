@@ -1,5 +1,5 @@
 /******************************************************************************
- *  Node A
+ *  Node B
  *****************************************************************************/
 
 #include "ee.h"
@@ -20,9 +20,8 @@ ECAN1MSGBUF ecan1msgBuf __attribute__((space(dma),aligned(ECAN1_MSG_BUF_LENGTH*1
 mID tx_ecan1message; //TX Transmission message
 mID rx_ecan1message; //RX Reception message
 
-static float counter[2]={0,0};
-static float *p_result1 = (float *)&rx_ecan1message.data[0];
-static float *p_result2 = (float *)&rx_ecan1message.data[4];
+static float newdata[2]={0,0};
+static float *p_result = (float *)&rx_ecan1message.data[0];
 static unsigned char *p_data= NULL;
 
 void CAN_Mask_Filter_Config(void)
@@ -32,7 +31,7 @@ void CAN_Mask_Filter_Config(void)
 		unsigned int exide)
 		m = 0 to 2 -> Mask Number
 		identifier -> SID <10:0> : EID <17:0>
-		mide = 0 -> Match either standard or extended address message		if filters match
+		mide = 0 -> Match either standard or extended address message if filters match
 		mide = 1 -> Match only message types that correpond to 'exide' bit in filter
 		exide = 0 -> Match messages with standard identifier addresses
 		exide = 1 -> Match messages with extended identifier addresses
@@ -52,8 +51,7 @@ void CAN_Mask_Filter_Config(void)
 		maskSel = 2	->	Acceptance Mask 2 register contains mask
 		maskSel = 3	->	No Mask Selection
 	*/
-	ecan1WriteRxAcptFilter(0x1,0x22,0x1,0x2,0x0);//id=22 to buffer 2
-	ecan1WriteRxAcptFilter(0x2,0x3,0x1,0x3,0x0);//id=3 to buffer 3
+	ecan1WriteRxAcptFilter(0x0,1,0x1,0x1,0x0);  //id=1 to buffer 1
 }
 
 /* CAN bus 1 Interrupt, ISR2 type */
@@ -68,23 +66,14 @@ ISR2(_C1Interrupt)
 	/*Reception interrupt, different code for different filtered id's if required */
     if(C1INTFbits.RBIF)
     {
-		if(C1RXFUL1bits.RXFUL2==1) //Filter 2
+		if(C1RXFUL1bits.RXFUL1==1) //Filter 1
 	    {
 			/*Tells rxECAN1 the buffer to pass from DMA to RAM */
-	    	rx_ecan1message.buffer=2;
-	    	C1RXFUL1bits.RXFUL2=0;
+	    	rx_ecan1message.buffer=1;
+	    	C1RXFUL1bits.RXFUL1=0;
 		    rxECAN1(&rx_ecan1message);
 		    C1INTFbits.RBIF = 0;
-		    ActivateTask(ReceiverTask);
-	    }
-		if(C1RXFUL1bits.RXFUL3==1)//Filter 3
-	    {
-			/*Tells rxECAN1 the buffer to pass from DMA to RAM */
-	    	rx_ecan1message.buffer=3;
-	    	C1RXFUL1bits.RXFUL3=0;
-		    rxECAN1(&rx_ecan1message);
-			C1INTFbits.RBIF = 0;
-			ActivateTask(ReceiverTask);
+		    ActivateTask(RxTxTask);
 	    }
    }
 }
@@ -96,7 +85,7 @@ void Send_message_to_node_B(float *data)
 	while(C1TR01CONbits.TXREQ0){};
 	tx_ecan1message.buffer=0;//Buffer number
 	tx_ecan1message.frame_type=1;//0->Std Id, 1->Ext Id
-	tx_ecan1message.id=1;//Identifier;
+	tx_ecan1message.id=0x22;//Identifier;
 	tx_ecan1message.message_type=0;//0->Normal, 1->Remote Transmit
 	tx_ecan1message.data_length=8;//Length of data (0 to 8 bytes)
 	tx_ecan1message.data[0]= *p_data;
@@ -111,24 +100,18 @@ void Send_message_to_node_B(float *data)
 	while(C1TR01CONbits.TXREQ0){};
 }
 
-TASK(SenderTask)
+TASK(RxTxTask)
 {
 	LATBbits.LATB14=!LATBbits.LATB14;
-	counter[0]=counter[0]+1;
-	if (counter[0]==100) counter[0]=0;
-	Send_message_to_node_B(&counter[0]);
-}
-
-TASK(ReceiverTask)
-{
-    printf("%f multiplied by 2 gives %f \n\r",(*p_result1),(*p_result2));
+	newdata[0]=(*p_result);
+	newdata[1]=newdata[0]*2;
+	Send_message_to_node_B(&newdata[0]);
 }
 
 int main(void)
 {
 	Sys_init();//Initialize clock, devices and periphericals
 	CAN_Mask_Filter_Config();
-	SetRelAlarm(AlarmSender,1000,500);//Sender activates every 0.5s
 	for (;;);
 	return 0;
 }

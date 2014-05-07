@@ -7,6 +7,7 @@
 #include "setup.h"
 #include "e_can1.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 _FOSCSEL(FNOSC_PRIPLL);	// Primary (XT, HS, EC) Oscillator with PLL
 _FOSC(OSCIOFNC_ON & POSCMD_XT); // OSC2 Pin Function: OSC2 is Clock Output
@@ -37,7 +38,7 @@ void CAN_Mask_Filter_Config(void)
 		exide = 0 -> Match messages with standard identifier addresses
 		exide = 1 -> Match messages with extended identifier addresses
 	*/
-	ecan1WriteRxAcptMask(0x0,0x1FFFFFFF, 0,0x1);
+	ecan1WriteRxAcptMask(0x0,0x1FFFFFF8, 1,0x1);
 	/*	Filter Configuration
 		ecan1WriteRxAcptFilter(int n, long identifier, unsigned int exide,
 		unsigned int bufPnt,unsigned int maskSel)
@@ -52,8 +53,8 @@ void CAN_Mask_Filter_Config(void)
 		maskSel = 2	->	Acceptance Mask 2 register contains mask
 		maskSel = 3	->	No Mask Selection
 	*/
-	ecan1WriteRxAcptFilter(0x1,0x22,0x1,0x2,0x0);//id=22 to buffer 2
-	ecan1WriteRxAcptFilter(0x2,0x3,0x1,0x3,0x0);//id=3 to buffer 3
+	ecan1WriteRxAcptFilter(0x0,0x0,0x1,0x0,0x0);//id=Croupier messages to buffer 0
+	ecan1WriteRxAcptFilter(0x1,0x1FFFFFF8,0x1,0x1,0x0);//id=Players messages to buffer 1
 }
 
 /* CAN bus 1 Interrupt, ISR2 type */
@@ -129,6 +130,7 @@ int main(void)
 	Sys_init();//Initialize clock, devices and periphericals
 	CAN_Mask_Filter_Config();
 	SetRelAlarm(AlarmSender,1000,500);//Sender activates every 0.5s
+	printf("Player started!\n");
 	for (;;);
 	return 0;
 }

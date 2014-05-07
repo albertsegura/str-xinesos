@@ -1,11 +1,11 @@
 CPU mySystem {
+
 	OS myOs {
 		EE_OPT = "DEBUG";
 		CPU_DATA = PIC30 {
 			APP_SRC = "setup.c";
 			APP_SRC = "e_can1.c";
 			APP_SRC = "code.c";
-			MULTI_STACK = FALSE;
 		};
 		MCU_DATA = PIC30 {
 			MODEL = PIC33FJ256MC710;
@@ -15,25 +15,15 @@ CPU mySystem {
 		};
 		KERNEL_TYPE = EDF { NESTED_IRQ = TRUE; TICK_TIME = "25ns";};
 	};
-	TASK SenderTask {
-		REL_DEADLINE = "0.05s";
-		PRIORITY = 3;
-		STACK = SHARED;
-		SCHEDULE = FULL;
-	};
-	TASK ReceiverTask {
+	TASK RxTxTask {
 		REL_DEADLINE = "0.05s";
 		PRIORITY = 3;
 		STACK = SHARED;
 		SCHEDULE = FULL;
 	};
 	COUNTER myCounter;
-	ALARM AlarmSender {
-		COUNTER = "myCounter";
-		ACTION = ACTIVATETASK { TASK = "SenderTask"; };
-	}; 
 	ALARM AlarmReceiver {
 		COUNTER = "myCounter";
-		ACTION = ACTIVATETASK { TASK = "ReceiverTask"; };
+		ACTION = ACTIVATETASK { TASK = "RxTxTask"; };
 	};
 }; 
