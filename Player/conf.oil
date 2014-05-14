@@ -17,23 +17,27 @@ CPU mySystem {
 	};
 	TASK SenderTask {
 		REL_DEADLINE = "0.05s";
-		PRIORITY = 3;
+		PRIORITY = 2;
 		STACK = SHARED;
 		SCHEDULE = FULL;
 	};
-	TASK ReceiverTask {
+
+	TASK ReceiverPlayerTask {
+		REL_DEADLINE = "0.10s";
+		PRIORITY = 1;
+		STACK = SHARED;
+		SCHEDULE = FULL;
+	};
+	TASK ReceiverCroupierTask {
 		REL_DEADLINE = "0.05s";
 		PRIORITY = 3;
 		STACK = SHARED;
 		SCHEDULE = FULL;
 	};
+
 	COUNTER myCounter;
 	ALARM AlarmSender {
 		COUNTER = "myCounter";
 		ACTION = ACTIVATETASK { TASK = "SenderTask"; };
 	}; 
-	ALARM AlarmReceiver {
-		COUNTER = "myCounter";
-		ACTION = ACTIVATETASK { TASK = "ReceiverTask"; };
-	};
 }; 

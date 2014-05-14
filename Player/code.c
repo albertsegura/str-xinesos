@@ -15,19 +15,29 @@ _FOSC(OSCIOFNC_ON & POSCMD_XT); // OSC2 Pin Function: OSC2 is Clock Output
 _FWDT(FWDTEN_OFF);		// Watchdog Timer Enabled/disabled by user software
 _FGS(GCP_OFF);			// Disable Code Protection
 
+
+#define C_MSG_ERROR 	0
+#define C_MSG_START 	1
+#define C_MSG_FB 		2
+#define C_MSG_SB 		3
+#define C_MSG_RESULT 	4
+
+unsigned int personal_key=0xdeadbeef;
+unsigned int game_stage = 0;
+
+
 // Define ECAN Message Buffers
 ECAN1MSGBUF ecan1msgBuf __attribute__((space(dma),aligned(ECAN1_MSG_BUF_LENGTH*16)));
 // CAN Messages in RAM
 mID tx_ecan1message; //TX Transmission message
-mID rx_ecan1message; //RX Reception message
+mID rx_ecanPmessage; //RX Players Reception message
+mID rx_ecanCmessage; //RX Croupier Reception message
 
 static float counter[2]={0,0};
 static float *p_result1 = (float *)&rx_ecan1message.data[0];
-static float *p_result2 = (float *)&rx_ecan1message.data[4];
 static unsigned char *p_data= NULL;
 
-void CAN_Mask_Filter_Config(void)
-{
+void CAN_Mask_Filter_Config(void) {
 	/*	Mask Configuration
 		ecan1WriteRxAcptMask(int m, long identifierMask, unsigned int mide,
 		unsigned int exide)
@@ -53,45 +63,39 @@ void CAN_Mask_Filter_Config(void)
 		maskSel = 2	->	Acceptance Mask 2 register contains mask
 		maskSel = 3	->	No Mask Selection
 	*/
-	ecan1WriteRxAcptFilter(0x0,0x0,0x1,0x0,0x0);//id=Croupier messages to buffer 0
-	ecan1WriteRxAcptFilter(0x1,0x1FFFFFF8,0x1,0x1,0x0);//id=Players messages to buffer 1
+	ecan1WriteRxAcptFilter(0x0,0x0,0x1,0x2,0x0);		//id=Croupier messages to buffer 2
+	ecan1WriteRxAcptFilter(0x1,0x1FFFFFF8,0x1,0x3,0x0);	//id=Players messages to buffer 3
 }
 
-/* CAN bus 1 Interrupt, ISR2 type */
-ISR2(_C1Interrupt)
-{
+/* CAN bus 1 Interrupt , ISR2 type */
+ISR2(_C1Interrupt) {
     IFS2bits.C1IF = 0; // clear interrupt flag
 	/* Transmission interrupt (nothing to be done but clear flag) */
-    if(C1INTFbits.TBIF)
-    {
-    	C1INTFbits.TBIF = 0;
-    }
+    if(C1INTFbits.TBIF) C1INTFbits.TBIF = 0;
 	/*Reception interrupt, different code for different filtered id's if required */
-    if(C1INTFbits.RBIF)
-    {
+    if(C1INTFbits.RBIF) {
 		if(C1RXFUL1bits.RXFUL2==1) //Filter 2
 	    {
 			/*Tells rxECAN1 the buffer to pass from DMA to RAM */
 	    	rx_ecan1message.buffer=2;
 	    	C1RXFUL1bits.RXFUL2=0;
-		    rxECAN1(&rx_ecan1message);
+		    rxECAN1(&rx_ecanCmessage);
 		    C1INTFbits.RBIF = 0;
-		    ActivateTask(ReceiverTask);
+		    ActivateTask(ReceiverCroupierTask);
 	    }
 		if(C1RXFUL1bits.RXFUL3==1)//Filter 3
 	    {
 			/*Tells rxECAN1 the buffer to pass from DMA to RAM */
 	    	rx_ecan1message.buffer=3;
 	    	C1RXFUL1bits.RXFUL3=0;
-		    rxECAN1(&rx_ecan1message);
+		    rxECAN1(&rx_ecanPmessage);
 			C1INTFbits.RBIF = 0;
-			ActivateTask(ReceiverTask);
+			ActivateTask(ReceiverPlayerTask);
 	    }
    }
 }
 
-void Send_message_to_node_B(float *data)
-{
+void Send_message_to_node_B(float *data) {
 	p_data=(unsigned char *)data;
 	C1CTRL1bits.ABAT = 1;
 	while(C1TR01CONbits.TXREQ0){};
@@ -112,17 +116,36 @@ void Send_message_to_node_B(float *data)
 	while(C1TR01CONbits.TXREQ0){};
 }
 
-TASK(SenderTask)
-{
+TASK(SenderTask) {
 	LATBbits.LATB14=!LATBbits.LATB14;
 	counter[0]=counter[0]+1;
 	if (counter[0]==100) counter[0]=0;
 	Send_message_to_node_B(&counter[0]);
 }
 
-TASK(ReceiverTask)
-{
-    printf("%f multiplied by 2 gives %f \n\r",(*p_result1),(*p_result2));
+TASK(ReceiverCroupierTask) {
+	char id = (char)rx_ecanCmessage.id;
+	// if (!verify_croupier(&rx_ecanCmessage.data[0])) return;
+	
+	if (id == C_MSG_START) {
+		init_encriptation(personal_key, &rx_ecanCmessage.data[0]);
+	}
+	else if (id == C_MSG_FB) {
+		
+	}
+	else if (id == C_MSG_SB) {
+		
+	}
+	else if (id == C_MSG_RESULT) {
+		
+	}
+	else if (id == C_MSG_ERROR) ; // LOL
+}
+
+
+TASK(ReceiverPlayerTask) {
+	char id = (char)rx_ecanPmessage.id;
+    //printf("%f multiplied by 2 gives %f \n\r",(*p_result1),(*p_result2));
 }
 
 int main(void)
