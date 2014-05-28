@@ -8,6 +8,7 @@
 #include "e_can1.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <can_encoder.h>
 
 _FOSCSEL(FNOSC_PRIPLL);	// Primary (XT, HS, EC) Oscillator with PLL
 _FOSC(OSCIOFNC_ON & POSCMD_XT); // OSC2 Pin Function: OSC2 is Clock Output
@@ -22,7 +23,7 @@ _FGS(GCP_OFF);			// Disable Code Protection
 #define C_MSG_SB 		3
 #define C_MSG_RESULT 	4
 
-unsigned int personal_key=0xdeadbeef;
+unsigned long int personal_key=0xdeadbeef;
 unsigned int game_stage = 0;
 
 
@@ -34,7 +35,7 @@ mID rx_ecanPmessage; //RX Players Reception message
 mID rx_ecanCmessage; //RX Croupier Reception message
 
 static float counter[2]={0,0};
-static float *p_result1 = (float *)&rx_ecan1message.data[0];
+static float *p_result1 = (float *)&rx_ecanPmessage.data[0];
 static unsigned char *p_data= NULL;
 
 void CAN_Mask_Filter_Config(void) {
@@ -64,7 +65,7 @@ void CAN_Mask_Filter_Config(void) {
 		maskSel = 3	->	No Mask Selection
 	*/
 	ecan1WriteRxAcptFilter(0x0,0x0,0x1,0x2,0x0);		//id=Croupier messages to buffer 2
-	ecan1WriteRxAcptFilter(0x1,0x1FFFFFF8,0x1,0x3,0x0);	//id=Players messages to buffer 3
+	ecan1WriteRxAcptFilter(0x1,0x1FFFFFF8,0x1,0x3,0x0);	//id=Players  messages to buffer 3
 }
 
 /* CAN bus 1 Interrupt , ISR2 type */
@@ -77,7 +78,7 @@ ISR2(_C1Interrupt) {
 		if(C1RXFUL1bits.RXFUL2==1) //Filter 2
 	    {
 			/*Tells rxECAN1 the buffer to pass from DMA to RAM */
-	    	rx_ecan1message.buffer=2;
+	    	rx_ecanCmessage.buffer=2;
 	    	C1RXFUL1bits.RXFUL2=0;
 		    rxECAN1(&rx_ecanCmessage);
 		    C1INTFbits.RBIF = 0;
@@ -86,7 +87,7 @@ ISR2(_C1Interrupt) {
 		if(C1RXFUL1bits.RXFUL3==1)//Filter 3
 	    {
 			/*Tells rxECAN1 the buffer to pass from DMA to RAM */
-	    	rx_ecan1message.buffer=3;
+	    	rx_ecanPmessage.buffer=3;
 	    	C1RXFUL1bits.RXFUL3=0;
 		    rxECAN1(&rx_ecanPmessage);
 			C1INTFbits.RBIF = 0;
@@ -124,20 +125,39 @@ TASK(SenderTask) {
 }
 
 TASK(ReceiverCroupierTask) {
+	CanMessage * msg;
 	char id = (char)rx_ecanCmessage.id;
-	// if (!verify_croupier(&rx_ecanCmessage.data[0])) return;
-	
+
 	if (id == C_MSG_START) {
-		init_encriptation(personal_key, &rx_ecanCmessage.data[0]);
+		unsigned char aposta = 0; // De 0-3
+		if (1 == init_encoding(personal_key, (CanMessage *)&rx_ecanCmessage.data[0])) {
+			msg = encode_coins(aposta);
+			// send encode coins message
+		}
 	}
 	else if (id == C_MSG_FB) {
-		
+		unsigned int guess = 0;
+		if (1 == check_croupier_signature((CanMessage *)&rx_ecanCmessage.data[0], 2)) {
+			msg = sign_initial_guess(guess);
+			// cast to tx_ecanmessage
+			// send
+		}
 	}
 	else if (id == C_MSG_SB) {
-		
+		unsigned int guess = 0;
+		if (1 == check_croupier_signature((CanMessage *)&rx_ecanCmessage.data[0], 3)) {
+			msg = sign_final_guess(guess);
+			// cast to tx_ecanmessage
+			// send
+		}
 	}
 	else if (id == C_MSG_RESULT) {
-		
+		unsigned int result  = 0;
+		if (1 == check_croupier_signature((CanMessage *)&rx_ecanCmessage.data[0], 3)) {
+			// missatge rebut conté: valor amb suma de les apostes i un bitmask amb els players guanyadors
+			// suma	16 bits del bit 16 al 32.
+			// guanyadors: 8 bits de menys pes.
+		}
 	}
 	else if (id == C_MSG_ERROR) ; // LOL
 }
@@ -150,10 +170,20 @@ TASK(ReceiverPlayerTask) {
 
 int main(void)
 {
+	char str [80];
+	int i;
+
 	Sys_init();//Initialize clock, devices and periphericals
 	CAN_Mask_Filter_Config();
 	SetRelAlarm(AlarmSender,1000,500);//Sender activates every 0.5s
 	printf("Player started!\n");
+	EE_UART1_Send('a');
+	printf ("Enter your family name: ");
+	scanf ("%79s",str);
+	printf ("Enter your age: ");
+	scanf ("%d",&i);
+	printf ("Mr. %s , %d years old.\n",str,i);
+
 	for (;;);
 	return 0;
 }
